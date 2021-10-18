@@ -27,7 +27,7 @@ module dut #(
 )(  
     input logic                wr,
     input logic [WIDTH   -1:0] din,
-    input logic [WIDTH   -1:0] dout,
+    output logic [WIDTH   -1:0] dout,
     input logic [AWIDTH -1: 0] addr
     );
     

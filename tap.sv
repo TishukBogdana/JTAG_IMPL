@@ -74,9 +74,9 @@ logic [AWIDTH-1:0] ram_addr;
 
 logic [31:0] idcode_ff;
 
-logic [4 :0] instr_slr_next;
-logic [4 :0] instr_slr_ff;
-logic [4 :0] instr_upd_ff;
+logic [2 :0] instr_slr_next;
+logic [2 :0] instr_slr_ff;
+logic [2 :0] instr_upd_ff;
 
 logic                   bypass_sel;
 logic                   bypass_next;
@@ -92,15 +92,21 @@ logic [BSR_WIDTH  -1:0] prld_sig;
 logic [NUMSTATES  -1:0] tap_state_ff;
 logic [NUMSTATES  -1:0] tap_state_next;
 logic [5:0]             tms_one_ctr_ff;
-
+logic                   sh_ir;
+logic                   capture_ir;
+logic                   update_ir;
+logic                   capture_dr;
+logic                   update_dr;
+logic                   sh_dr;
+logic                   nrml_tmode_ff;
 // TAP FSM description
 always_ff @(posedge tck or negedge rst_n)
     if (~rst_n)
-        tms_one_ctr_ff <= '1;
+        tms_one_ctr_ff <= 6'b1;
     else
-        tms_one_ctr_ff <= tms ? ( tms_one_ctr_ff[5] ? tms_one_ctr_ff : tms_one_ctr_ff << 1)  : '1 ;
+        tms_one_ctr_ff <= ( tms & ~tap_state_ff[ST_RST] ) ? ( tms_one_ctr_ff[5] ? tms_one_ctr_ff : tms_one_ctr_ff << 1)  : 6'b1 ;
         
-assign tap_state_next[ST_RST] = tms_one_ctr_ff[5] 
+assign tap_state_next[ST_RST] = tms_one_ctr_ff[5]
                               | ( tap_state_ff[ST_RST] & tms );
 
 assign tap_state_next[ST_RUN_IDLE] = ( tap_state_ff[ST_RUN_IDLE] & ~tms ) 
@@ -154,11 +160,25 @@ always_ff @(posedge tck or negedge rst_n)
     else
         tap_state_ff <= tap_state_next;
 
+assign update_ir   = tap_state_ff[ST_UPDIR];
+assign update_dr   = tap_state_ff[ST_UPDDR];
+assign sh_ir       = tap_state_ff[ST_SHIR];
+assign sh_dr       = tap_state_ff[ST_SHDR];
+assign capture_ir  = tap_state_ff[ST_CAPIR];
+assign capture_dr  = tap_state_ff[ST_CAPDR];
+
+always_ff @(posedge tck or negedge rst_n)
+    if (~rst_n)
+        nrml_tmode_ff <= 0;
+    else 
+        nrml_tmode_ff <= tap_state_next[ST_RST] ? 1'b0 
+                                                : ( tap_state_next[ST_RUN_IDLE ] ?  1'b1 : nrml_tmode_ff ) ;
+
 // TAP instruction register
 
-assign instr_slr_next = ( tap_state_ff[ST_CAPIR] | tap_state_ff[ST_RST] )? DESIGN_INST
-                                                                         : tap_state_ff[ST_SHIR] ? {tdi, (instr_slr_ff >> 1)} 
-                                                                                                 : instr_slr_ff;
+assign instr_slr_next = ( capture_ir | tap_state_ff[ST_RST] )? DESIGN_INST
+                                                             : sh_ir ? {tdi, instr_slr_ff[2:1] } 
+                                                                     : instr_slr_ff;
 
 always_ff @(posedge tck or negedge rst_n)
     if (~rst_n) begin
@@ -166,25 +186,23 @@ always_ff @(posedge tck or negedge rst_n)
         instr_upd_ff <= 0;
     end else begin
         instr_slr_ff <= instr_slr_next;
-        instr_upd_ff <=  tap_state_ff[ST_UPDIR] ? instr_slr_ff : instr_upd_ff ;
+        instr_upd_ff <= update_ir ? instr_slr_ff : instr_upd_ff ;
     end
+    
 
-
-// TAP data registers and commands
+//// TAP data registers and commands
 assign sample_sig = {ram_wr, ram_din, ram_addr, ram_dout };
 assign prld_sig   = {2'b0, ext_wr, ext_addr, ext_din};
 
 assign bypass_sel = &(instr_upd_ff);
-assign bypass_next  = ( tap_state_ff[ST_CAPDR] | tap_state_ff[ST_RST] ) ? 0 : ( tap_state_ff[ST_SHDR] ? tdi : bypass_ff );
+assign bypass_next  = ( capture_dr | tap_state_ff[ST_RST] ) ? 0 : ( sh_dr ? tdi : bypass_ff );
 
 assign bsr_slr_prld = ( instr_upd_ff == INST_SAMPLE ) ? sample_sig
                                                       : ( ( instr_upd_ff == INST_PRELOAD ) ? prld_sig
                                                                                            : bsr_slr_ff );
-assign bsr_slr_next = tap_state_ff[ST_CAPDR] ? bsr_slr_prld
-                                             : ( tap_state_ff[ST_SHDR] ? {tdi, (bsr_slr_ff >> 1)} 
-                                                                       : ( tap_state_ff[ST_RST] ? '0 : bsr_slr_ff ) );
-
-assign bsr_upd_en =  tap_state_ff[ST_UPDDR] & (( instr_upd_ff == INST_INTEST ) | ( instr_upd_ff == INST_EXTEST ));
+assign bsr_slr_next = capture_dr ? bsr_slr_prld
+                                 : ( sh_dr ? {tdi, (bsr_slr_ff[4:1])} 
+                                           : ( tap_state_ff[ST_RST] ? '0 : bsr_slr_ff ) );
 
 assign bsr_sel = ( instr_upd_ff == INST_INTEST )
                | ( instr_upd_ff == INST_EXTEST ) 
@@ -198,7 +216,7 @@ always_ff @(posedge tck or negedge rst_n)
         bypass_ff  <= 0;
     end else begin
         bsr_slr_ff <= bsr_slr_next;
-        bsr_upd_ff <= bsr_upd_en ? bsr_slr_ff : bsr_upd_ff ;
+        bsr_upd_ff <= update_dr ? bsr_slr_ff : bsr_upd_ff ;
         bypass_ff  <= bypass_sel ? bypass_next : bypass_ff;
     end
     
@@ -215,13 +233,18 @@ assign ram_addr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) 
                                                                                 : ext_addr;
                                                                                 
 assign ram_wr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[4]
-                                                                              : ext_wr; 
+                                                                              : ram_wr_gated; 
 
 assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[6:5]
                                                                                 : ram_dout;
+                                                                                
+
+always_ff @(posedge clk )
+    ram_wr_gated <= ext_wr;
+    
 // add bufg_mux here for rams_wr                                                                              
 dut dut_ram (
-    .wr   (ram_wr_gated),
+    .wr   (ram_wr),
     .din  (ram_din),
     .dout (ram_dout),
     .addr (ram_addr)
