@@ -45,6 +45,7 @@ module tap(
   localparam INST_INTEST  = 3'b100;
   localparam INST_EXTEST  = 3'b101;
   localparam BSR_WIDTH    = WIDTH * 2 + AWIDTH + 1;
+  localparam IDCODE       = 28'h3631093;
   
   localparam ST_RST      = 0;
   localparam ST_RUN_IDLE = 1;
@@ -73,6 +74,7 @@ logic [WIDTH -1:0] ram_dout;
 logic [AWIDTH-1:0] ram_addr;
 
 logic [31:0] idcode_ff;
+logic [31:0] idcode_next;
 
 logic [2 :0] instr_slr_next;
 logic [2 :0] instr_slr_ff;
@@ -176,17 +178,18 @@ always_ff @(posedge tck or negedge rst_n)
 
 // TAP instruction register
 
-assign instr_slr_next = ( capture_ir | tap_state_ff[ST_RST] )? DESIGN_INST
-                                                             : sh_ir ? {tdi, instr_slr_ff[2:1] } 
-                                                                     : instr_slr_ff;
+assign instr_slr_next = capture_ir ? DESIGN_INST
+                                   : sh_ir ? {tdi, instr_slr_ff[2:1] } 
+                                           : instr_slr_ff;
 
 always_ff @(posedge tck or negedge rst_n)
     if (~rst_n) begin
         instr_slr_ff <= 0;
-        instr_upd_ff <= 0;
+        instr_upd_ff <= INST_IDCODE;
     end else begin
         instr_slr_ff <= instr_slr_next;
-        instr_upd_ff <= update_ir ? instr_slr_ff : instr_upd_ff ;
+        instr_upd_ff <= tap_state_next[ST_RST] ? INST_IDCODE 
+                                               : (update_ir ? instr_slr_ff : instr_upd_ff );
     end
     
 
@@ -215,17 +218,23 @@ always_ff @(posedge tck or negedge rst_n)
         bsr_upd_ff <= 0;
         bypass_ff  <= 0;
     end else begin
-        bsr_slr_ff <= bsr_slr_next;
-        bsr_upd_ff <= update_dr ? bsr_slr_ff : bsr_upd_ff ;
+        bsr_slr_ff <= bsr_sel ? bsr_slr_next : bsr_slr_ff;
+        bsr_upd_ff <= (update_dr & bsr_sel) ? bsr_slr_ff : bsr_upd_ff ;
         bypass_ff  <= bypass_sel ? bypass_next : bypass_ff;
     end
     
 assign tdo = &(instr_upd_ff) ? bypass_ff
                              : bsr_sel ? bsr_slr_ff[0]
                                        : ( instr_upd_ff == INST_IDCODE) ? idcode_ff[0] 
-                                                                        : instr_slr_ff;
-                                                                        
- 
+
+                                                                        : instr_slr_ff;                                                                        
+
+assign idcode_next = capture_dr ? {3'b0, IDCODE, 1'b1} 
+                                : sh_dr ? {tdi, idcode_ff[31:1] } : idcode_ff;
+always_ff @(posedge tck)
+    if ( instr_upd_ff == INST_IDCODE)
+    idcode_ff <= idcode_next;
+        
 assign ram_din = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[1:0]
                                                                                : ext_din;
                                                                           
@@ -238,7 +247,6 @@ assign ram_wr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? 
 assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[6:5]
                                                                                 : ram_dout;
                                                                                 
-
 always_ff @(posedge clk )
     ram_wr_gated <= ext_wr;
     
