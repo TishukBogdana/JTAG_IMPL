@@ -71,7 +71,7 @@ initial begin
     #20 ;
   end
   
-  $display ("TAP Bypass finished %t", $time);
+  $display ("TAP IDCODE finished %t", $time);
   
   tms_seq = BYPASS_SEQ ;
   for (int  i = 0; i < 16 ; i ++ ) begin
@@ -86,6 +86,22 @@ initial begin
   end
   $display ("TAP Bypass finished %t", $time);
    
+  tms_seq = INTEST_SEQ ;
+  for (int  i = 0; i < 18 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 0;
+    if ( i == 5)  tdi = 0;
+    if ( i == 6)  tdi = 1;
+    
+    if ( i == 11) tdi = 1 ;
+    if ( i == 12) tdi = 0 ;
+    if ( i == 13) tdi = 1 ;
+    if ( i == 14) tdi = 1 ;
+    if ( i == 15) tdi = 0 ;
+    #20 ;
+  end
   tms_seq = INTEST_SEQ ;
   for (int  i = 0; i < 18 ; i ++ ) begin
     tms = tms_seq;

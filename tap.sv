@@ -242,17 +242,17 @@ assign ram_addr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) 
                                                                                 : ext_addr;
                                                                                 
 assign ram_wr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[4]
-                                                                              : ram_wr_gated; 
+                                                                              : ext_wr; 
 
 assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[6:5]
                                                                                 : ram_dout;
                                                                                 
 always_ff @(posedge clk )
-    ram_wr_gated <= ext_wr;
+    ram_wr_gated <= ram_wr;
     
 // add bufg_mux here for rams_wr                                                                              
 dut dut_ram (
-    .wr   (ram_wr),
+    .wr   (ram_wr_gated),
     .din  (ram_din),
     .dout (ram_dout),
     .addr (ram_addr)
