@@ -1,3 +1,4 @@
+set_property PACKAGE_PIN H17 [get_ports {ext_dout[0]}]
 set_property PACKAGE_PIN K15 [get_ports {ext_dout[1]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {ext_dout[0]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {ext_dout[1]}]
@@ -19,7 +20,7 @@ set_property IOSTANDARD LVCMOS33 [get_ports rst_n]
 create_clock -period 10.000 -name clk -waveform {0.000 5.000} [get_ports -filter { NAME =~  "*clk*" && DIRECTION == "IN" }]
 create_clock -period 100.000 -name tck -waveform {0.000 50.000} [get_ports -filter { NAME =~  "*tck*" && DIRECTION == "IN" }]
 
-set_property PACKAGE_PIN H17 [get_ports {ext_dout[0]}]
+
 
 set_property IOSTANDARD LVCMOS33 [get_ports tdo]
 set_property PACKAGE_PIN C17 [get_ports tdi]

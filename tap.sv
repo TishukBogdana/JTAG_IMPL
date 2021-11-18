@@ -206,7 +206,7 @@ assign bsr_slr_prld = ( instr_upd_ff == INST_SAMPLE ) ? sample_sig
                                                       : ( ( instr_upd_ff == INST_PRELOAD ) ? prld_sig
                                                                                            : bsr_slr_ff );
 assign bsr_slr_next = capture_dr ? bsr_slr_prld
-                                 : ( sh_dr ? {tdi, (bsr_slr_ff[4:1])}
+                                 : ( sh_dr ? {tdi, (bsr_slr_ff[6:1])}
                                            : ( tap_state_next[ST_RST] ? '0 : bsr_slr_ff ) );
 
 assign bsr_sel = ( instr_upd_ff == INST_INTEST )
