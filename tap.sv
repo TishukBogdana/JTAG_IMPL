@@ -88,9 +88,13 @@ module tap(
 (* mark_debug = "true" *) logic                   bypass_next;
 (* mark_debug = "true" *) logic                   bypass_ff;
 (* mark_debug = "true" *) logic                   bsr_sel;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_slr_prld;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_slr_next;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_slr_ff;
+(* mark_debug = "true" *) logic                   bsr_wr_ff;
+(* mark_debug = "true" *) logic                   bsr_addr0_ff;
+(* mark_debug = "true" *) logic                   bsr_addr1_ff;
+(* mark_debug = "true" *) logic                   bsr_din0_ff;
+(* mark_debug = "true" *) logic                   bsr_din1_ff;
+(* mark_debug = "true" *) logic                   bsr_dout0_ff;
+(* mark_debug = "true" *) logic                   bsr_dout1_ff;
 (* mark_debug = "true" *) logic                   bsr_upd_en;
 (* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_upd_ff;
 (* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] sample_sig;
@@ -107,10 +111,7 @@ module tap(
 (* mark_debug = "true" *) logic                   nrml_tmode_ff;
 
 // TAP FSM description
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n)
-        tms_one_ctr_ff <= 6'b1;
-    else
+always_ff @(posedge tck )
         tms_one_ctr_ff <= ( tms & ~tap_state_ff[ST_RST] ) ? ( tms_one_ctr_ff[5] ? tms_one_ctr_ff : tms_one_ctr_ff << 1)  : 6'b1 ;
 
 assign tap_state_next[ST_RST] = tms_one_ctr_ff[5]
@@ -161,10 +162,7 @@ assign tap_state_next[ST_EX2_DR]  =  ( tap_state_ff[ST_PAUSE_DR]  & tms );
 assign tap_state_next[ST_UPDDR]   =  (  tap_state_ff[ST_EX2_DR] & tms )
                                   |  (  tap_state_ff[ST_EX1_DR] & tms ) ;
 
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n)
-        tap_state_ff <= 1 ;
-    else
+always_ff @(posedge tck )
         tap_state_ff <= tap_state_next;
 
 assign update_ir   = tap_state_ff[ST_UPDIR];
@@ -174,12 +172,9 @@ assign sh_dr       = tap_state_ff[ST_SHDR];
 assign capture_ir  = tap_state_ff[ST_CAPIR];
 assign capture_dr  = tap_state_ff[ST_CAPDR];
 
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n)
-        nrml_tmode_ff <= 0;
-    else
-        nrml_tmode_ff <= tap_state_next[ST_RST] ? 1'b0
-                                                : ( tap_state_next[ST_RUN_IDLE ] ?  1'b1 : nrml_tmode_ff ) ;
+always_ff @(posedge tck )
+        nrml_tmode_ff <= tap_state_next[ST_RST] ? 1'b0 :  1'b1;
+
 
 // TAP instruction register
 
@@ -187,54 +182,45 @@ assign instr_slr_next = capture_ir ? DESIGN_INST
                                    : sh_ir ? {tdi, instr_slr_ff[4:1] }
                                            : instr_slr_ff;
 
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n) begin
-        instr_slr_ff <= 0;
-    end else begin
+always_ff @(posedge tck )
         instr_slr_ff <= instr_slr_next;
-    end
+
 
 
 //// TAP data registers and commands
-assign sample_sig = {ram_wr, ram_din, ram_addr, ram_dout };
-assign prld_sig   = {2'b0, ext_wr, ext_addr, ext_din};
+
 
 assign bypass_sel = &(instr_upd_ff);
 assign bypass_next  = ( capture_dr | tap_state_ff[ST_RST] ) ? 0 : ( sh_dr ? tdi : bypass_ff );
 
-assign bsr_slr_prld = ( instr_upd_ff == INST_SAMPLE ) ? sample_sig
-                                                      : ( ( instr_upd_ff == INST_PRELOAD ) ? prld_sig
-                                                                                           : bsr_slr_ff );
-assign bsr_slr_next = capture_dr ? bsr_slr_prld
-                                 : ( sh_dr ? {tdi, (bsr_slr_ff[6:1])}
-                                           : ( tap_state_next[ST_RST] ? '0 : bsr_slr_ff ) );
+
 
 assign bsr_sel = ( instr_upd_ff == INST_INTEST )
                | ( instr_upd_ff == INST_EXTEST )
                | ( instr_upd_ff == INST_SAMPLE )
                | ( instr_upd_ff == INST_PRELOAD );
 
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n) begin
-        bsr_slr_ff <= 0;
-        bypass_ff  <= 0;
-    end else begin
-        bsr_slr_ff <= bsr_sel ? bsr_slr_next : bsr_slr_ff;
+always_ff @(posedge tck )
+    begin
+        bsr_wr_ff    <= capture_dr ? ram_wr : sh_dr? tdi : bsr_wr_ff;
+        bsr_addr1_ff <= capture_dr ? ram_addr[1] : sh_dr? bsr_wr_ff : bsr_addr1_ff;
+        bsr_addr0_ff <= capture_dr ? ram_addr[0] : sh_dr? bsr_addr1_ff : bsr_addr0_ff;
+        bsr_din1_ff  <= capture_dr ? ram_din[1] : sh_dr? bsr_addr0_ff : bsr_din1_ff;
+        bsr_din0_ff  <= capture_dr ? ram_din[0] : sh_dr? bsr_din1_ff : bsr_din0_ff;
+        bsr_dout1_ff <= capture_dr ? ram_dout[1] : sh_dr? bsr_din0_ff : bsr_dout1_ff;
+        bsr_dout0_ff <= capture_dr ? ram_dout[0] : sh_dr? bsr_dout1_ff : bsr_dout0_ff;
         bypass_ff  <= bypass_sel ? bypass_next : bypass_ff;
     end
 
-always_ff @(negedge tck or negedge rst_n)
-    if (~rst_n) begin
-        bsr_upd_ff <= 0;
-        instr_upd_ff <= INST_IDCODE;
-    end else begin
-        bsr_upd_ff <= (update_dr & bsr_sel) ? bsr_slr_ff : bsr_upd_ff ;
+always_ff @(negedge tck )
+     begin
+        bsr_upd_ff <= (update_dr & bsr_sel) ? {bsr_wr_ff, bsr_addr1_ff, bsr_addr0_ff, bsr_din1_ff, bsr_din0_ff, bsr_dout1_ff, bsr_dout0_ff } : bsr_upd_ff ;
         instr_upd_ff <= tap_state_ff[ST_RST] ? INST_IDCODE
                                              : (update_ir ? instr_slr_ff : instr_upd_ff );
     end
 
 assign tdo_next = sh_ir ? instr_slr_ff[0] : ( (instr_upd_ff == INST_BYPASS) ? bypass_ff
-                                                                            : bsr_sel ? bsr_slr_ff[0]
+                                                                            : bsr_sel ? bsr_dout0_ff
                                                                             : ( instr_upd_ff == INST_IDCODE) ? idcode_ff[0]
                                                                                                              : 0) ;
 
@@ -248,29 +234,33 @@ assign idcode_next = capture_dr ? IDCODE
                                 : sh_dr ? {tdi, idcode_ff[31:1] } : idcode_ff;
 
 assign idcode_en = ( instr_upd_ff == INST_IDCODE);
-always_ff @(posedge tck or negedge rst_n)
-    if (~rst_n)
-        idcode_ff <= IDCODE ;
-    else if ( idcode_en )
+always_ff @(posedge tck)
+  if ( idcode_en )
         idcode_ff <= idcode_next;
 
-assign ram_din = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[1:0]
-                                                                               : ext_din;
+assign ram_din = (instr_upd_ff == INST_INTEST) ? bsr_upd_ff[3:2]
+                                               : ext_din;
 
-assign ram_addr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[3:2]
-                                                                                : ext_addr;
+assign ram_addr = (instr_upd_ff == INST_INTEST ) ? bsr_upd_ff[5:4]
+                                                 : ext_addr;
 
-assign ram_wr = (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[4]
-                                                                              : ( (( instr_upd_ff == INST_EXTEST ) & tap_state_ff[ST_RUN_IDLE]) ? 1'b0
-                                                                                                                                                : ext_wr);
+assign ram_wr = (( instr_upd_ff == INST_INTEST ) & nrml_tmode_ff)
+               ? bsr_upd_ff[6]
+               :  nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
+                                    | ( instr_upd_ff == INST_PRELOAD )
+                                    | ( instr_upd_ff == INST_BYPASS )) ? 1'b0
+                                                                        : ext_wr;
 
-assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & tap_state_ff[ST_RUN_IDLE]) ? bsr_upd_ff[6:5]
-                                                                                : ( (( instr_upd_ff == INST_INTEST ) & tap_state_ff[ST_RUN_IDLE]) ? 'bz
-                                                                                                                                                  : ram_dout );
+assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & nrml_tmode_ff) ? bsr_upd_ff[1:0]
+                                                                    : ( nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
+                                                                                       | ( instr_upd_ff == INST_PRELOAD )
+                                                                                       | ( instr_upd_ff == INST_BYPASS )) )? 'bz : ram_dout;
 
-always_ff @(posedge clk )
+always_ff @(posedge tck )
     ram_wr_gated <= ram_wr;
 
+always_ff @(posedge clk )
+    tdo_pos_ff <= tdo_next;
 // add bufg_mux here for rams_wr
 dut dut_ram (
     .wr   (ram_wr_gated),
