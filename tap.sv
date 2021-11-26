@@ -255,15 +255,13 @@ assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & nrml_tmode_ff) ? bsr_upd_ff
                                                                     : ( nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
                                                                                        | ( instr_upd_ff == INST_PRELOAD )
                                                                                        | ( instr_upd_ff == INST_BYPASS )) )? 'bz : ram_dout;
-
-always_ff @(posedge tck )
-    ram_wr_gated <= ram_wr;
-
+// This is for ILA
 always_ff @(posedge clk )
     tdo_pos_ff <= tdo_next;
+    
 // add bufg_mux here for rams_wr
 dut dut_ram (
-    .wr   (ram_wr_gated),
+    .wr   (ram_wr),
     .din  (ram_din),
     .dout (ram_dout),
     .addr (ram_addr)
