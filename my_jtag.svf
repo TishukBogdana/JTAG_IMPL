@@ -1,0 +1,43 @@
+! Bypass
+SIR 5 TDI(1F) TDO(01) MASK(1F);
+SDR 5 TDI(1A) TDO(14) MASK(1F);
+! Intest
+ SIR 5 TDI(4) TDO(01) MASK(1F);
+! Write 01 value to 00 address
+ SDR 7 TDI(04) TDO(00) MASK(00);
+ SDR 7 TDI(44) TDO(00) MASK(00);
+ SDR 7 TDI(00) TDO(00) MASK(00);
+! Write 02 value to 01 address  
+  SDR 7 TDI(18) TDO(00) MASK(00);
+  SDR 7 TDI(58) TDO(00) MASK(00);
+  SDR 7 TDI(00) TDO(00) MASK(00);
+! Write 01 value to 10 address    
+  SDR 7 TDI(24) TDO(00) MASK(00);
+  SDR 7 TDI(64) TDO(00) MASK(00);
+  SDR 7 TDI(00) TDO(00) MASK(00);
+! Write 02 value to 11 address    
+  SDR 7 TDI(38) TDO(00) MASK(00);
+  SDR 7 TDI(78) TDO(00) MASK(00);
+  SDR 7 TDI(00) TDO(00) MASK(00);
+! Set address 00   
+  SDR 7 TDI(00) TDO(00) MASK(00);
+! Set address 01, read address 00      
+  SDR 7 TDI(10) TDO(01) MASK(7F);
+! Set address 02, read address 02      
+  SDR 7 TDI(20) TDO(12) MASK(7F);
+! Set address 03, read address 01      
+  SDR 7 TDI(30) TDO(21) MASK(7F);
+! Set address 03, read address 02      
+  SDR 7 TDI(30) TDO(32) MASK(7F);
+
+! SAMPLE
+ SIR 5 TDI(2) TDO(01) MASK(1F);
+ SDR 7 TDI(00) TDO(01) MASK(7F);
+
+! PRELOAD
+ SIR 5 TDI(3) TDO(01) MASK(1F);
+ SDR 7 TDI(7F) TDO(00) MASK(00);
+! EXTEST
+ SIR 5 TDI(5) TDO(01) MASK(1F);
+ STATE IDLE;
+ RUNTEST 2000000 TCK;
