@@ -1,6 +1,6 @@
 # JTAG_IMPL
 
-Simple JTAG TAP Implementation with DUT inside
+Simple JTAG TAP Implementation with Asynchronous RAM as DUT inside
 Implemented Instructions
 1. IDCODE
 2. Bypass
