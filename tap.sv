@@ -27,10 +27,9 @@ module tap(
     (* mark_debug = "true" *) input  logic tdi,
     (* mark_debug = "true" *) input  logic tms,
     (* mark_debug = "true" *) output logic tdo,
-    input  logic [1:0] ext_addr,
-    input  logic [1:0] ext_din,
-    input  logic       ext_wr,
-    output logic [1:0] ext_dout
+                              input  logic trst_n, 
+    input  logic [3:0] ext_din,
+    output logic [3:0] ext_state
 
     );
 
@@ -44,7 +43,9 @@ module tap(
   localparam INST_PRELOAD = 5'b00011;
   localparam INST_INTEST  = 5'b00100;
   localparam INST_EXTEST  = 5'b00101;
-  localparam BSR_WIDTH    = WIDTH * 2 + AWIDTH + 1;
+  localparam INST_BIST    = 5'b00111;
+
+  localparam BSR_WIDTH    = 10;
   localparam IDCODE       = 32'hdeadbeef;
 
   localparam ST_RST      = 0;
@@ -65,18 +66,23 @@ module tap(
   localparam ST_UPDDR    = 15;
   localparam NUMSTATES   = 16;
 
-  localparam DESIGN_INST = 5'b1;
+  localparam DESIGN_INST  = 5'b1;
+  localparam BIST_RLENGTH = 8;
 
-(* mark_debug = "true" *) logic              ram_wr;
-(* mark_debug = "true" *) logic              ram_wr_gated;
-(* mark_debug = "true" *) logic [WIDTH -1:0] ram_din;
-(* mark_debug = "true" *) logic [WIDTH -1:0] ram_dout;
-(* mark_debug = "true" *) logic [AWIDTH-1:0] ram_addr;
-
+(* mark_debug = "true" *) logic [3:0] drive;
+(* mark_debug = "true" *) logic [3:0] bist_drive;
+(* mark_debug = "true" *) logic [3:0] state;
+                          logic clk_muxed;
+                          logic bdscan_tmode;
+                          logic bist_tmode;
 (* mark_debug = "true" *) logic [31:0] idcode_ff;
 (* mark_debug = "true" *) logic [31:0] idcode_next;
 (* mark_debug = "true" *) logic        idcode_en;
-
+                          logic single_sw_ff;
+                          logic tmode_clk_ff;
+                          logic bist_start_ff;
+                          logic bist_prohibit_ff;
+                          logic bist_run_ff;
 (* mark_debug = "true" *) logic [4 :0] instr_slr_next;
 (* mark_debug = "true" *) logic [4 :0] instr_slr_ff;
 (* mark_debug = "true" *) logic [4 :0] instr_upd_ff;
@@ -88,15 +94,24 @@ module tap(
 (* mark_debug = "true" *) logic                   bypass_next;
 (* mark_debug = "true" *) logic                   bypass_ff;
 (* mark_debug = "true" *) logic                   bsr_sel;
-(* mark_debug = "true" *) logic                   bsr_wr_ff;
-(* mark_debug = "true" *) logic                   bsr_addr0_ff;
-(* mark_debug = "true" *) logic                   bsr_addr1_ff;
-(* mark_debug = "true" *) logic                   bsr_din0_ff;
-(* mark_debug = "true" *) logic                   bsr_din1_ff;
-(* mark_debug = "true" *) logic                   bsr_dout0_ff;
-(* mark_debug = "true" *) logic                   bsr_dout1_ff;
+(* mark_debug = "true" *) logic                   bsr_in0_ff;
+(* mark_debug = "true" *) logic                   bsr_in1_ff;
+(* mark_debug = "true" *) logic                   bsr_in2_ff;
+(* mark_debug = "true" *) logic                   bsr_in3_ff;
+(* mark_debug = "true" *) logic                   bsr_st0_ff;
+(* mark_debug = "true" *) logic                   bsr_st1_ff;
+(* mark_debug = "true" *) logic                   bsr_st2_ff;
+(* mark_debug = "true" *) logic                   bsr_st3_ff;
+(* mark_debug = "true" *) logic                   bsr_sw_ff;
+(* mark_debug = "true" *) logic                   bsr_rst_ff;
 (* mark_debug = "true" *) logic                   bsr_upd_en;
 (* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_upd_ff;
+                          logic                     bist_sel;
+                          logic [BIST_RLENGTH -1:0] bist_slr_next;
+                          logic [BIST_RLENGTH -1:0] bist_slr_ff;
+                          logic [BIST_RLENGTH -1:0] bist_upd_ff;
+                          logic                     bist_suc;
+                          logic [4:0]               bist_duration;
 (* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] sample_sig;
 (* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] prld_sig;
 (* mark_debug = "true" *) logic [NUMSTATES  -1:0] tap_state_ff;
@@ -111,7 +126,10 @@ module tap(
 (* mark_debug = "true" *) logic                   nrml_tmode_ff;
 
 // TAP FSM description
-always_ff @(posedge tck )
+always_ff @(posedge tck or negedge trst_n)
+        if (~trst_n)
+             tms_one_ctr_ff <= '0;
+        else
         tms_one_ctr_ff <= ( tms & ~tap_state_ff[ST_RST] ) ? ( tms_one_ctr_ff[5] ? tms_one_ctr_ff : tms_one_ctr_ff << 1)  : 6'b1 ;
 
 assign tap_state_next[ST_RST] = tms_one_ctr_ff[5]
@@ -162,8 +180,9 @@ assign tap_state_next[ST_EX2_DR]  =  ( tap_state_ff[ST_PAUSE_DR]  & tms );
 assign tap_state_next[ST_UPDDR]   =  (  tap_state_ff[ST_EX2_DR] & tms )
                                   |  (  tap_state_ff[ST_EX1_DR] & tms ) ;
 
-always_ff @(posedge tck )
-        tap_state_ff <= tap_state_next;
+always_ff @(posedge tck or negedge trst_n )
+    if (~trst_n) tap_state_ff <= 1;
+    else    tap_state_ff <= tap_state_next;
 
 assign update_ir   = tap_state_ff[ST_UPDIR];
 assign update_dr   = tap_state_ff[ST_UPDDR];
@@ -200,29 +219,56 @@ assign bsr_sel = ( instr_upd_ff == INST_INTEST )
                | ( instr_upd_ff == INST_SAMPLE )
                | ( instr_upd_ff == INST_PRELOAD );
 
-always_ff @(posedge tck )
-    begin
-        bsr_wr_ff    <= capture_dr ? ram_wr : sh_dr? tdi : bsr_wr_ff;
-        bsr_addr1_ff <= capture_dr ? ram_addr[1] : sh_dr? bsr_wr_ff : bsr_addr1_ff;
-        bsr_addr0_ff <= capture_dr ? ram_addr[0] : sh_dr? bsr_addr1_ff : bsr_addr0_ff;
-        bsr_din1_ff  <= capture_dr ? ram_din[1] : sh_dr? bsr_addr0_ff : bsr_din1_ff;
-        bsr_din0_ff  <= capture_dr ? ram_din[0] : sh_dr? bsr_din1_ff : bsr_din0_ff;
-        bsr_dout1_ff <= capture_dr ? ram_dout[1] : sh_dr? bsr_din0_ff : bsr_dout1_ff;
-        bsr_dout0_ff <= capture_dr ? ram_dout[0] : sh_dr? bsr_dout1_ff : bsr_dout0_ff;
+always_ff @(posedge tck or negedge trst_n )
+    if (~trst_n) begin
+        bsr_rst_ff   <= '0;
+        bsr_sw_ff    <= '0;
+        bsr_in3_ff   <= '0;
+        bsr_in2_ff   <= '0;
+        bsr_in1_ff   <= '0;
+        bsr_in0_ff   <= '0;
+        bsr_st3_ff   <= '0;
+        bsr_st2_ff   <= '0;
+        bsr_st1_ff   <= '0;
+        bsr_st0_ff   <= '0;
+    end else begin
+        bsr_rst_ff   <= capture_dr ? '0 : sh_dr ? tdi : bsr_rst_ff;
+        bsr_sw_ff    <= capture_dr ? '0 : sh_dr ? bsr_rst_ff : bsr_sw_ff;
+        bsr_in3_ff   <= capture_dr ? drive[3] : sh_dr? bsr_sw_ff : bsr_in3_ff;
+        bsr_in2_ff   <= capture_dr ? drive[2] : sh_dr? bsr_in3_ff : bsr_in2_ff;
+        bsr_in1_ff   <= capture_dr ? drive[1] : sh_dr? bsr_in2_ff : bsr_in1_ff;
+        bsr_in0_ff   <= capture_dr ? drive[0] : sh_dr? bsr_in1_ff : bsr_in0_ff;
+        bsr_st3_ff   <= capture_dr ? state[3] : sh_dr? bsr_in0_ff : bsr_st3_ff;
+        bsr_st2_ff   <= capture_dr ? state[2] : sh_dr? bsr_st3_ff : bsr_st2_ff;
+        bsr_st1_ff   <= capture_dr ? state[1] : sh_dr? bsr_st2_ff : bsr_st1_ff;
+        bsr_st0_ff   <= capture_dr ? state[0] : sh_dr? bsr_st1_ff : bsr_st0_ff;
         bypass_ff  <= bypass_sel ? bypass_next : bypass_ff;
     end
 
-always_ff @(negedge tck )
-     begin
-        bsr_upd_ff <= (update_dr & bsr_sel) ? {bsr_wr_ff, bsr_addr1_ff, bsr_addr0_ff, bsr_din1_ff, bsr_din0_ff, bsr_dout1_ff, bsr_dout0_ff } : bsr_upd_ff ;
+always_ff @(negedge tck or negedge trst_n) 
+    if (~trst_n) begin
+        bsr_upd_ff <= '0;
+        instr_upd_ff <= '0;
+     end else begin
+        bsr_upd_ff <= (update_dr & bsr_sel) ? { bsr_rst_ff,
+                                                bsr_sw_ff,
+                                                bsr_in3_ff,
+                                                bsr_in2_ff,
+                                                bsr_in1_ff,
+                                                bsr_in0_ff,
+                                                bsr_st3_ff,
+                                                bsr_st2_ff,
+                                                bsr_st1_ff,
+                                                bsr_st0_ff } : bsr_upd_ff ;
+
         instr_upd_ff <= tap_state_ff[ST_RST] ? INST_IDCODE
                                              : (update_ir ? instr_slr_ff : instr_upd_ff );
     end
 
 assign tdo_next = sh_ir ? instr_slr_ff[0] : ( (instr_upd_ff == INST_BYPASS) ? bypass_ff
-                                                                            : bsr_sel ? bsr_dout0_ff
+                                                                            : bsr_sel ? bsr_st0_ff
                                                                             : ( instr_upd_ff == INST_IDCODE) ? idcode_ff[0]
-                                                                                                             : 0) ;
+                                                                                                             :( bist_sel ? bist_slr_ff[0] : 0 )) ;
 
 always_ff @(negedge tck)
      if (sh_dr | sh_ir)
@@ -238,34 +284,81 @@ always_ff @(posedge tck)
   if ( idcode_en )
         idcode_ff <= idcode_next;
 
-assign ram_din = (instr_upd_ff == INST_INTEST) ? bsr_upd_ff[3:2]
-                                               : ext_din;
+assign drive = (instr_upd_ff == INST_INTEST) ? bsr_upd_ff[7:4]
+                                             : ( (instr_upd_ff == INST_BIST) ? bist_drive : ext_din);
 
-assign ram_addr = (instr_upd_ff == INST_INTEST ) ? bsr_upd_ff[5:4]
-                                                 : ext_addr;
-
-assign ram_wr = (( instr_upd_ff == INST_INTEST ) & nrml_tmode_ff)
-               ? bsr_upd_ff[6]
-               :  nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
-                                    | ( instr_upd_ff == INST_PRELOAD )
-                                    | ( instr_upd_ff == INST_BYPASS )) ? 1'b0
-                                                                        : ext_wr;
-
-assign ext_dout = (( instr_upd_ff == INST_EXTEST ) & nrml_tmode_ff) ? bsr_upd_ff[1:0]
+assign ext_state = (( instr_upd_ff == INST_EXTEST ) & nrml_tmode_ff) ? bsr_upd_ff[3:0]
                                                                     : ( nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
                                                                                        | ( instr_upd_ff == INST_PRELOAD )
-                                                                                       | ( instr_upd_ff == INST_BYPASS )) )? 'bz : ram_dout;
-// This is for ILA
-always_ff @(posedge clk )
-    tdo_pos_ff <= tdo_next;
-    
-// add bufg_mux here for rams_wr
-dut dut_ram (
-    .wr   (ram_wr),
-    .din  (ram_din),
-    .dout (ram_dout),
-    .addr (ram_addr)
-);
+                                                                                       | ( instr_upd_ff == INST_BYPASS )) )? 'bz : state;
 
+// BIST
+assign bist_sel = (instr_upd_ff == INST_BIST);
+
+assign bist_slr_next = capture_dr ? {2'b00, bist_duration, bist_suc} : (sh_dr ? {tdi, bist_slr_ff [BIST_RLENGTH-1:1]} : bist_slr_ff);
+
+always_ff @(posedge tck or negedge trst_n)
+  if(~trst_n)
+    bist_slr_ff <= '0;
+  else if (bist_sel)
+    bist_slr_ff <= bist_slr_next;
+
+always_ff @(negedge tck or negedge trst_n)
+  if (~trst_n)
+    bist_upd_ff <= '0;
+  else if (bist_sel)
+    bist_upd_ff <= bist_slr_ff;
+
+  assign bdscan_tmode = ( nrml_tmode_ff & ~(( instr_upd_ff == INST_SAMPLE )
+                                         | ( instr_upd_ff == INST_PRELOAD )
+                                         | ( instr_upd_ff == INST_BIST )
+                                         | ( instr_upd_ff == INST_BYPASS )) );
+
+  assign bist_tmode  = ( instr_upd_ff == INST_BIST ) & bist_upd_ff[7]; // and bist_start
+    
+  always_ff @(posedge tck or negedge rst_n)
+    if(~rst_n) begin
+      single_sw_ff  <= '0;
+      tmode_clk_ff  <= '0;
+      bist_start_ff <= '0;
+      bist_prohibit_ff <= '0;
+      bist_run_ff   <= '0;
+    end else begin
+      single_sw_ff <= ~single_sw_ff & bsr_upd_ff[8] & ~tmode_clk_ff;
+      tmode_clk_ff <= bsr_upd_ff[8];
+      bist_run_ff  <= bist_tmode;
+      bist_start_ff <= ~bist_start_ff & bist_tmode & ~bist_run_ff;
+      bist_prohibit_ff <= bist_start_ff;
+    end
+
+
+    BUFGMUX BUFGMUX_inst (
+        .O(clk_muxed), // Clock MUX output
+        .I0(clk), // Clock0 input
+        .I1(tck), // Clock1 input
+        .S(bist_tmode | nrml_tmode_ff ) // Clock select input
+    );
+
+  fsm_mur fsm_dut(
+    .clk          (clk_muxed),
+    .rst_n        (rst_n),
+    .sig_in       (drive),
+    .state_o      (state),
+    .tmode_i      (bist_tmode | bdscan_tmode),
+    .tmode_clk_en ((bist_tmode & ~bist_prohibit_ff) | single_sw_ff),
+    .start_bist   (bist_start_ff),
+    .rst_state    (bsr_upd_ff[9])
+    );
+
+  bist i_bist(
+    .clk         (tck),
+    .trst_n      (trst_n),
+    .tst_start_i (bist_start_ff),
+    .pattern_sel_i (bist_upd_ff[6]),
+    .state_i     (state),
+    .drive_o     (bist_drive),
+    .success_o   (bist_suc),
+    .duration_o  (bist_duration)
+    );
 
 endmodule
