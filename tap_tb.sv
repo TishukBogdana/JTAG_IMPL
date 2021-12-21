@@ -39,7 +39,7 @@ logic tck;
 logic tdi;
 logic tdo;
 logic tms;
-logic trst_n;
+
 logic [3:0] ext_din;
 logic finish1;
 logic [63:0] tms_seq;
@@ -53,9 +53,9 @@ initial begin
   rst_n = 1;
   tms = 1;
   #2 rst_n = 0;
-  trst_n = 0;
+  rst_n = 0;
   #18 rst_n = 1;
-  trst_n = 1;
+  rst_n = 1;
 //  for (int  i = 0; i < 32 ; i ++ ) begin
   
 //    tms = tms_seq[0];
@@ -286,7 +286,6 @@ always
  tap i_tap(
     .rst_n (rst_n), // Async reset
     .clk   (clk), // system clock 
-    .trst_n (trst_n),
     .tck   (tck),
     .tdi   (tdi),
     .tms   (tms),

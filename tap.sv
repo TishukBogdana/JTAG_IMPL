@@ -27,7 +27,6 @@ module tap(
     (* mark_debug = "true" *) input  logic tdi,
     (* mark_debug = "true" *) input  logic tms,
     (* mark_debug = "true" *) output logic tdo,
-                              input  logic trst_n, 
     input  logic [3:0] ext_din,
     output logic [3:0] ext_state
 
@@ -126,8 +125,8 @@ module tap(
 (* mark_debug = "true" *) logic                   nrml_tmode_ff;
 
 // TAP FSM description
-always_ff @(posedge tck or negedge trst_n)
-        if (~trst_n)
+always_ff @(posedge tck or negedge rst_n)
+        if (~rst_n)
              tms_one_ctr_ff <= '0;
         else
         tms_one_ctr_ff <= ( tms & ~tap_state_ff[ST_RST] ) ? ( tms_one_ctr_ff[5] ? tms_one_ctr_ff : tms_one_ctr_ff << 1)  : 6'b1 ;
@@ -180,8 +179,8 @@ assign tap_state_next[ST_EX2_DR]  =  ( tap_state_ff[ST_PAUSE_DR]  & tms );
 assign tap_state_next[ST_UPDDR]   =  (  tap_state_ff[ST_EX2_DR] & tms )
                                   |  (  tap_state_ff[ST_EX1_DR] & tms ) ;
 
-always_ff @(posedge tck or negedge trst_n )
-    if (~trst_n) tap_state_ff <= 1;
+always_ff @(posedge tck or negedge rst_n )
+    if (~rst_n) tap_state_ff <= 1;
     else    tap_state_ff <= tap_state_next;
 
 assign update_ir   = tap_state_ff[ST_UPDIR];
@@ -219,8 +218,8 @@ assign bsr_sel = ( instr_upd_ff == INST_INTEST )
                | ( instr_upd_ff == INST_SAMPLE )
                | ( instr_upd_ff == INST_PRELOAD );
 
-always_ff @(posedge tck or negedge trst_n )
-    if (~trst_n) begin
+always_ff @(posedge tck or negedge rst_n )
+    if (~rst_n) begin
         bsr_rst_ff   <= '0;
         bsr_sw_ff    <= '0;
         bsr_in3_ff   <= '0;
@@ -245,8 +244,8 @@ always_ff @(posedge tck or negedge trst_n )
         bypass_ff  <= bypass_sel ? bypass_next : bypass_ff;
     end
 
-always_ff @(negedge tck or negedge trst_n) 
-    if (~trst_n) begin
+always_ff @(negedge tck or negedge rst_n) 
+    if (~rst_n) begin
         bsr_upd_ff <= '0;
         instr_upd_ff <= '0;
      end else begin
@@ -297,14 +296,14 @@ assign bist_sel = (instr_upd_ff == INST_BIST);
 
 assign bist_slr_next = capture_dr ? {2'b00, bist_duration, bist_suc} : (sh_dr ? {tdi, bist_slr_ff [BIST_RLENGTH-1:1]} : bist_slr_ff);
 
-always_ff @(posedge tck or negedge trst_n)
-  if(~trst_n)
+always_ff @(posedge tck or negedge rst_n)
+  if(~rst_n)
     bist_slr_ff <= '0;
   else if (bist_sel)
     bist_slr_ff <= bist_slr_next;
 
-always_ff @(negedge tck or negedge trst_n)
-  if (~trst_n)
+always_ff @(negedge tck or negedge rst_n)
+  if (~rst_n)
     bist_upd_ff <= '0;
   else if (bist_sel)
     bist_upd_ff <= bist_slr_ff;
@@ -340,19 +339,19 @@ always_ff @(negedge tck or negedge trst_n)
     );
 
   fsm_mur fsm_dut(
-    .clk          (clk_muxed),
+    .clk          (bsr_upd_ff[8]),
     .rst_n        (rst_n),
     .sig_in       (drive),
     .state_o      (state),
-    .tmode_i      (bist_tmode | bdscan_tmode),
-    .tmode_clk_en ((bist_tmode & ~bist_prohibit_ff) | single_sw_ff),
+    .tmode_i      ('1/*bist_tmode | bdscan_tmode*/),
+    .tmode_clk_en ('1/*(bist_tmode & ~bist_prohibit_ff) | single_sw_ff*/),
     .start_bist   (bist_start_ff),
     .rst_state    (bsr_upd_ff[9])
     );
 
   bist i_bist(
     .clk         (tck),
-    .trst_n      (trst_n),
+    .rst_n      (rst_n),
     .tst_start_i (bist_start_ff),
     .pattern_sel_i (bist_upd_ff[6]),
     .state_i     (state),
