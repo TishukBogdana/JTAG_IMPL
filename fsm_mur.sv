@@ -23,10 +23,8 @@
 module fsm_mur(
     input  logic clk,
     input  logic rst_n,
-    input  logic [3:0]  sig_in,
+    input  logic [3:0] sig_in,
     output logic [3:0] state_o,
-    input  logic       tmode_i,
-    input  logic       tmode_clk_en,
     input  logic       start_bist,
     input  logic       rst_state
     );
@@ -66,6 +64,7 @@ module fsm_mur(
 
             4'b0110 : state_next = ( {4{(sig_in == 4'b0001)}} & 4'b0001)
                                  | ( {4{(sig_in == 4'b0010)}} & 4'b0101)
+                                 | ( {4{(sig_in == 4'b0011)}} & 4'b1000)
                                  | ( {4{(sig_in == 4'b1001)}} & 4'b1011)
                                  | ( {4{(sig_in == 4'b1111)}} & 4'b1110)
                                  | ( {4{(sig_in == 4'b1110)}} & 4'b1111);
@@ -97,6 +96,7 @@ module fsm_mur(
                                  | ( {4{(sig_in == 4'b1001)}} & 4'b1110);
 
             4'b1100 : state_next = ( {4{(sig_in == 4'b1110)}} & 4'b0011)
+                                 | ( {4{(sig_in == 4'b1010)}} & 4'b1001)
                                  | ( {4{(sig_in == 4'b1001)}} & 4'b0110)
                                  | ( {4{&sig_in}} & 4'b1011)
                                  | ( {4{~|sig_in}} & 4'b1110);
@@ -125,7 +125,7 @@ module fsm_mur(
     always_ff @(posedge clk or negedge rst_n)
       if (~rst_n)
         state_ff <= '0;
-      else if (~tmode_i | tmode_clk_en)
+      else 
         state_ff <= (start_bist | rst_state) ? '0 : state_next;
 
 assign state_o = state_ff;

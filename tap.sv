@@ -43,6 +43,9 @@ module tap(
   localparam INST_INTEST  = 5'b00100;
   localparam INST_EXTEST  = 5'b00101;
   localparam INST_BIST    = 5'b00111;
+  localparam INST_CFG_MEM = 5'b01000;
+  localparam INST_CFG_CTR = 5'b01001;
+   
 
   localparam BSR_WIDTH    = 10;
   localparam IDCODE       = 32'hdeadbeef;
@@ -66,22 +69,23 @@ module tap(
   localparam NUMSTATES   = 16;
 
   localparam DESIGN_INST  = 5'b1;
-  localparam BIST_RLENGTH = 8;
+  localparam BIST_RLENGTH = 25;
 
 (* mark_debug = "true" *) logic [3:0] drive;
 (* mark_debug = "true" *) logic [3:0] bist_drive;
 (* mark_debug = "true" *) logic [3:0] state;
-                          logic clk_muxed;
-                          logic bdscan_tmode;
-                          logic bist_tmode;
-(* mark_debug = "true" *) logic [31:0] idcode_ff;
-(* mark_debug = "true" *) logic [31:0] idcode_next;
-(* mark_debug = "true" *) logic        idcode_en;
+(* mark_debug = "true" *) logic clk_muxed;
+(* mark_debug = "true" *) logic bdscan_tmode;
+(* mark_debug = "true" *) logic bist_tmode;
+ logic [31:0] idcode_ff;
+ logic [31:0] idcode_next;
+ logic        idcode_en;
                           logic single_sw_ff;
                           logic tmode_clk_ff;
                           logic bist_start_ff;
                           logic bist_prohibit_ff;
                           logic bist_run_ff;
+                          logic bist_fsm_rst_ff;
 (* mark_debug = "true" *) logic [4 :0] instr_slr_next;
 (* mark_debug = "true" *) logic [4 :0] instr_slr_ff;
 (* mark_debug = "true" *) logic [4 :0] instr_upd_ff;
@@ -98,21 +102,26 @@ module tap(
 (* mark_debug = "true" *) logic                   bsr_in2_ff;
 (* mark_debug = "true" *) logic                   bsr_in3_ff;
 (* mark_debug = "true" *) logic                   bsr_st0_ff;
-(* mark_debug = "true" *) logic                   bsr_st1_ff;
-(* mark_debug = "true" *) logic                   bsr_st2_ff;
-(* mark_debug = "true" *) logic                   bsr_st3_ff;
-(* mark_debug = "true" *) logic                   bsr_sw_ff;
-(* mark_debug = "true" *) logic                   bsr_rst_ff;
-(* mark_debug = "true" *) logic                   bsr_upd_en;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] bsr_upd_ff;
-                          logic                     bist_sel;
-                          logic [BIST_RLENGTH -1:0] bist_slr_next;
-                          logic [BIST_RLENGTH -1:0] bist_slr_ff;
-                          logic [BIST_RLENGTH -1:0] bist_upd_ff;
-                          logic                     bist_suc;
-                          logic [4:0]               bist_duration;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] sample_sig;
-(* mark_debug = "true" *) logic [BSR_WIDTH  -1:0] prld_sig;
+ logic                   bsr_st1_ff;
+ logic                   bsr_st2_ff;
+ logic                   bsr_st3_ff;
+ logic                   bsr_sw_ff;
+ logic                   bsr_rst_ff;
+ logic                   bsr_upd_en;
+ logic [BSR_WIDTH  -1:0] bsr_upd_ff;
+ logic                     bist_sel;
+ logic [BIST_RLENGTH -1:0] bist_slr_next;
+ logic [3:0] fault_state;
+ logic [3:0] fault_trans;
+ logic [3:0] fault_drive;
+ logic [3:0] fault_ref;
+(* mark_debug = "true" *) logic [BIST_RLENGTH -1:0] bist_slr_ff;
+(* mark_debug = "true" *) logic [BIST_RLENGTH -1:0] bist_upd_ff;
+(* mark_debug = "true" *) logic                     bist_suc;
+(* mark_debug = "true" *) logic [6:0]               bist_duration;
+ logic clk_fsm;
+ logic [BSR_WIDTH  -1:0] sample_sig;
+ logic [BSR_WIDTH  -1:0] prld_sig;
 (* mark_debug = "true" *) logic [NUMSTATES  -1:0] tap_state_ff;
 (* mark_debug = "true" *) logic [NUMSTATES  -1:0] tap_state_next;
 (* mark_debug = "true" *) logic [5:0]             tms_one_ctr_ff;
@@ -124,6 +133,17 @@ module tap(
 (* mark_debug = "true" *) logic                   sh_dr;
 (* mark_debug = "true" *) logic                   nrml_tmode_ff;
 
+logic [23:0] mem_cfg_next;
+logic [7:0] bist_mem_data;
+logic [23:0] mem_cfg_ff;
+logic [15:0] dur_cfg_next;
+logic [15:0] dur_cfg_ff;
+logic [15:0] dur_upd_ff;
+logic [23:0] mem_upd_ff;
+// This is for ILA
+always_ff @(posedge clk )
+    tdo_pos_ff <= tdo_next;
+    
 // TAP FSM description
 always_ff @(posedge tck or negedge rst_n)
         if (~rst_n)
@@ -264,10 +284,34 @@ always_ff @(negedge tck or negedge rst_n)
                                              : (update_ir ? instr_slr_ff : instr_upd_ff );
     end
 
+assign mem_cfg_next = capture_dr ? {1'b0, mem_cfg_ff[22:8], bist_mem_data } : (sh_dr ? {tdi, mem_cfg_ff[23:1]} : mem_cfg_ff );
+assign dur_cfg_next = sh_dr ? {tdi, dur_cfg_ff[15:1]} : dur_cfg_ff;
+
+always_ff @(posedge tck or negedge rst_n)
+  if (~rst_n)begin 
+    mem_cfg_ff <= '0;
+    dur_cfg_ff <= '0;
+  end else begin
+    dur_cfg_ff <= ( instr_upd_ff == INST_CFG_CTR) ? dur_cfg_next : dur_cfg_ff ;
+    mem_cfg_ff <= ( instr_upd_ff == INST_CFG_MEM) ? mem_cfg_next : mem_cfg_ff ;
+ end
+    
+ always_ff @(negedge tck or negedge rst_n)
+  if (~rst_n)begin 
+    mem_upd_ff <= '0;
+    dur_upd_ff <= '0;
+  end else begin
+    dur_upd_ff <= (( instr_upd_ff == INST_CFG_CTR) & update_dr) ?  dur_cfg_ff : dur_upd_ff ;
+    mem_upd_ff <= (( instr_upd_ff == INST_CFG_MEM) & update_dr) ?  mem_cfg_ff : mem_upd_ff;
+ end
+    
 assign tdo_next = sh_ir ? instr_slr_ff[0] : ( (instr_upd_ff == INST_BYPASS) ? bypass_ff
                                                                             : bsr_sel ? bsr_st0_ff
                                                                             : ( instr_upd_ff == INST_IDCODE) ? idcode_ff[0]
-                                                                                                             :( bist_sel ? bist_slr_ff[0] : 0 )) ;
+                                                                                                             :( bist_sel ? bist_slr_ff[0] 
+                                                                                                                         : ( ( instr_upd_ff == INST_CFG_MEM) ?  mem_cfg_ff[0]
+                                                                                                                                                           : ( ( instr_upd_ff == INST_CFG_CTR )? dur_cfg_ff[0]
+                                                                                                                                                                                               :0 )) )) ;
 
 always_ff @(negedge tck)
      if (sh_dr | sh_ir)
@@ -294,7 +338,7 @@ assign ext_state = (( instr_upd_ff == INST_EXTEST ) & nrml_tmode_ff) ? bsr_upd_f
 // BIST
 assign bist_sel = (instr_upd_ff == INST_BIST);
 
-assign bist_slr_next = capture_dr ? {2'b00, bist_duration, bist_suc} : (sh_dr ? {tdi, bist_slr_ff [BIST_RLENGTH-1:1]} : bist_slr_ff);
+assign bist_slr_next = capture_dr ? {1'b0, fault_state, fault_drive, fault_trans, fault_ref, bist_duration, bist_suc} : (sh_dr ? {tdi, bist_slr_ff [BIST_RLENGTH-1:1]} : bist_slr_ff);
 
 always_ff @(posedge tck or negedge rst_n)
   if(~rst_n)
@@ -313,51 +357,57 @@ always_ff @(negedge tck or negedge rst_n)
                                          | ( instr_upd_ff == INST_BIST )
                                          | ( instr_upd_ff == INST_BYPASS )) );
 
-  assign bist_tmode  = ( instr_upd_ff == INST_BIST ) & bist_upd_ff[7]; // and bist_start
+  assign bist_tmode  = ( instr_upd_ff == INST_BIST ) & bist_upd_ff[24]; // and bist_start
     
   always_ff @(posedge tck or negedge rst_n)
     if(~rst_n) begin
       single_sw_ff  <= '0;
       tmode_clk_ff  <= '0;
       bist_start_ff <= '0;
-      bist_prohibit_ff <= '0;
+      bist_fsm_rst_ff <= '0;
       bist_run_ff   <= '0;
     end else begin
       single_sw_ff <= ~single_sw_ff & bsr_upd_ff[8] & ~tmode_clk_ff;
       tmode_clk_ff <= bsr_upd_ff[8];
       bist_run_ff  <= bist_tmode;
       bist_start_ff <= ~bist_start_ff & bist_tmode & ~bist_run_ff;
-      bist_prohibit_ff <= bist_start_ff;
+      bist_fsm_rst_ff <= bist_start_ff;
+      
     end
 
-
-    BUFGMUX BUFGMUX_inst (
-        .O(clk_muxed), // Clock MUX output
-        .I0(clk), // Clock0 input
-        .I1(tck), // Clock1 input
-        .S(bist_tmode | nrml_tmode_ff ) // Clock select input
-    );
+    assign clk_muxed = bist_tmode? tck :clk;
+    assign clk_fsm = bdscan_tmode? bsr_upd_ff[8]:clk_muxed;
 
   fsm_mur fsm_dut(
-    .clk          (bsr_upd_ff[8]),
+    .clk          (clk_fsm),
     .rst_n        (rst_n),
     .sig_in       (drive),
     .state_o      (state),
-    .tmode_i      ('1/*bist_tmode | bdscan_tmode*/),
-    .tmode_clk_en ('1/*(bist_tmode & ~bist_prohibit_ff) | single_sw_ff*/),
-    .start_bist   (bist_start_ff),
+    .start_bist   (bist_fsm_rst_ff),
     .rst_state    (bsr_upd_ff[9])
     );
 
   bist i_bist(
     .clk         (tck),
-    .rst_n      (rst_n),
+    .rst_n       (rst_n),
     .tst_start_i (bist_start_ff),
-    .pattern_sel_i (bist_upd_ff[6]),
     .state_i     (state),
     .drive_o     (bist_drive),
     .success_o   (bist_suc),
-    .duration_o  (bist_duration)
+    .duration_o  (bist_duration),
+    .mem_we_i    (mem_upd_ff[23]),
+    .mem_addr_i  (mem_upd_ff[22:16]),
+    .mem_data_i  (mem_upd_ff[15:8]),
+    .mem_data_o  (bist_mem_data),
+    .start_addr_cfg_i(dur_upd_ff[7]),
+    .start_addr_i(dur_upd_ff[6:0]),
+    
+    .fault_state_o (fault_state),
+    .fault_trans_o (fault_trans),
+    .fault_drive_o (fault_drive),
+    .fault_ref_o   (fault_ref),
+    .dur_cfg_i (dur_upd_ff[15]),
+    .duration_i (dur_upd_ff[14:8])
     );
 
 endmodule

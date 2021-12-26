@@ -20,95 +20,136 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module bist(
+module bist #(
+parameter MEMSIZE = 128
+)
+(
   input  logic        clk,
   input  logic        rst_n,
   input  logic        tst_start_i,
-  input  logic        pattern_sel_i,
   input  logic [3:0]  state_i,
   output logic [3:0]  drive_o,
   output logic        success_o,
-  output logic [4:0]  duration_o
+  output logic [6:0]  duration_o,
+  
+  // RAM IF
+  input logic mem_we_i,
+  input logic [$clog2(MEMSIZE) -1 : 0] mem_addr_i,
+  input logic [7 : 0] mem_data_i,
+  output logic [7:0] mem_data_o,
+  input logic start_addr_cfg_i,
+  input logic [$clog2(MEMSIZE) -1 : 0] start_addr_i,
+  
+  input logic dur_cfg_i,
+  input logic [$clog2(MEMSIZE) -1 : 0] duration_i,
+  
+  // Fault description
+  output logic [3:0] fault_state_o,
+  output logic [3:0] fault_trans_o,
+  output logic [3:0] fault_drive_o,
+  output logic [3:0] fault_ref_o
     );
 
-localparam STOP = 92;
 
-logic [3:0] drive_ff;
-logic [3:0] ref_val;
+logic [$clog2(MEMSIZE) -1 : 0] start_addr_ff;
+logic [$clog2(MEMSIZE) -1 : 0] duration_ff;
+logic bist_proc_ff;
+logic bist_proc_del_ff;
+logic [3:0] drive;
+logic [3:0] ref_val_ff;
+logic [7:0] ram_data;
 
-logic [3:0] force_state_next;
+logic [3:0] lstate_ff;
+logic [3:0] ldrive_ff;
 
-logic [3:0] tst_val [0:128] ={4'b1000, 4'b0001, 4'b1111, 4'b0001, 4'b1011, 4'b1011,
-                              4'b1010, 4'b1111, 4'b1100, 4'b1010, 4'b0010, 4'b1010,
-                              4'b1111, 4'b1001, 4'b0011, 4'b1111, 4'b1100, 4'b1111,
-                              4'b0010, 4'b0000, 4'b0110, 4'b0000, 4'b0001, 4'b0010,
-                              4'b0000, 4'b0001, 4'b1110, 4'b1100, 4'b1101, 4'b0101,
-                              4'b1001, 4'b0010, 4'b1111, 4'b0101, 4'b1110, 4'b0110,
-                              4'b1100, 4'b0110, 4'b1010, 4'b0011, 4'b1101, 4'b1010,
-                              4'b0001, 4'b0101, 4'b0010, 4'b0011, 4'b0101, 4'b0011,
-                              4'b0000, 4'b0001, 4'b1001, 4'b0101, 4'b0101, 4'b1010,
-                              4'b1110, 4'b1111, 4'b1101, 4'b1011, 4'b1001, 4'b1110,
-                              4'b0011, 4'b1111, 4'b0010, 4'b0010, 4'b0101, 4'b1111,
-                              4'b1000, 4'b1111, 4'b1111, 4'b1100, 4'b0010, 4'b1001,
-                              4'b0110, 4'b0000, 4'b0001, 4'b1110, 4'b0010, 4'b0010,
-                              4'b1111, 4'b0001, 4'b1001, 4'b0110, 4'b0111, 4'b1111,
-                              4'b1101, 4'b0011, 4'b1100, 4'b0010, 4'b1010, 4'b1101,
-                              4'b0101, 4'b0000};
-
-logic [3:0] check_val [0:16] = {4'b0110, 4'b0001, 4'b0000, 4'b0010, 4'b0001, 4'b0011,
-                                4'b0100, 4'b0001, 4'b1000, 4'b0001, 4'b1011, 4'b0001,
-                                4'b0000, 4'b1010, 4'b0010, 4'b0101, 4'b0000, 4'b1101,
-                                4'b0000, 4'b0010, 4'b0111, 4'b0000, 4'b0010, 4'b1001,
-                                4'b0100, 4'b0111, 4'b0010, 4'b1110, 4'b0100, 4'b1100,
-                                4'b0110, 4'b0101, 4'b0100, 4'b1100, 4'b0011, 4'b1111,
-                                4'b0011, 4'b1111, 4'b0100, 4'b1000, 4'b0011, 4'b0100,
-                                4'b0111, 4'b0101, 4'b1000, 4'b0111, 4'b0101, 4'b0010,
-                                4'b1001, 4'b0110, 4'b1011, 4'b0100, 4'b1100, 4'b1001,
-                                4'b1100, 4'b1011, 4'b1000, 4'b1011, 4'b1110, 4'b0111,
-                                4'b1010, 4'b0101, 4'b1000, 4'b1101, 4'b0001, 4'b0000,
-                                4'b0110, 4'b1110, 4'b0001, 4'b1000, 4'b1101, 4'b0011,
-                                4'b1111, 4'b1010, 4'b1101, 4'b0101, 4'b1000, 4'b1101,
-                                4'b1010, 4'b1101, 4'b0011, 4'b1111, 4'b1100, 4'b1011,
-                                4'b1000, 4'b0111, 4'b0010, 4'b1001, 4'b1110, 4'b0100,
-                                4'b1100, 4'b1110} ;
-
-logic [16:0] success_ff;
-logic [4:0] ctr_ff;
-logic [4:0] ref_ptr;
+logic [$clog2(MEMSIZE) -1:0] ram_addr;
+(* mark_debug = "true" *) logic  success_ff;
+(* mark_debug = "true" *) logic  success_next;
+logic [6:0] ctr_ff;
+(* mark_debug = "true" *) logic [6:0] ctr;
 logic bist_finish_ff;
-logic pattern_ff;
 
-assign ref_ptr = |ctr_ff ? ctr_ff -1 : ctr_ff;
-assign ref_val = pattern_ff ? check_val1[ref_ptr] : check_val[ref_ptr];
 
+// Fault
+  logic [3:0] fault_state_ff;
+  logic [3:0] fault_trans_ff;
+  logic [3:0] fault_drive_ff;
+  logic [3:0] fault_ref_ff;
+  
+ assign ram_addr = bist_proc_ff ? start_addr_ff + ctr  : mem_addr_i  ; 
+ ram 
+  #(
+    .dat_width (8), 
+    .adr_width (7), 
+    .mem_size  (128)
+  ) i_ram (
+    .dat_i (mem_data_i),
+    .adr_i (ram_addr),
+    .we_i  (mem_we_i),
+    .dat_o (ram_data),
+    .clk   (clk)
+  ); 
+
+// Control logic
 always_ff @(posedge clk or negedge rst_n)
     if (~rst_n) begin
-        bist_finish_ff <= '0;
+        bist_proc_ff <= '0;
         ctr_ff <= '0;
-        pattern_ff <='0;
+        start_addr_ff <= '0;
+        duration_ff   <= 93;
+        bist_proc_del_ff <= '0;
     end else begin
-        pattern_ff <= tst_start_i ? pattern_sel_i : pattern_ff;
-        bist_finish_ff <= tst_start_i ? '0 : (ctr_ff >= 17 );
-        ctr_ff  <= tst_start_i ? '0 : ((ctr_ff >= 17 )? ctr_ff : ctr_ff + 1);
+        bist_proc_del_ff <= bist_proc_ff;
+        start_addr_ff <= start_addr_cfg_i ? start_addr_i : start_addr_ff;
+        duration_ff   <= dur_cfg_i ? duration_i : duration_ff;
+        bist_proc_ff  <= tst_start_i ? '1 : ( (ctr_ff < duration_ff ) & success_ff);
+        ctr_ff  <= tst_start_i ? '0 : ((ctr_ff >= duration_ff )? ctr_ff : ctr_ff + 1);
     end
 
-always_ff @(posedge clk or negedge rst_n)
-  if (~rst_n)
-    drive_ff <= '0;
-  else if (tst_start_i)
-    drive_ff <= pattern_sel_i ? tst_val1[0] : tst_val[0];
-  else if (ctr_ff < 17)
-    drive_ff <= pattern_sel_i ? tst_val1[ctr_ff] : tst_val[ctr_ff];
 
-for (genvar ii = 0; ii < 17; ii = ii + 1) begin : g_success
+assign ctr = (ctr_ff == duration_ff)? '0 : ctr_ff;
+
+always_ff @(posedge clk )
+    ref_val_ff <= ram_data[3:0];
+
+assign drive = ram_data[7:4];
+
+
+always_ff @(posedge clk )
+    if (bist_proc_ff) begin
+        lstate_ff <= state_i;
+        ldrive_ff <= drive;
+    end
+    
+
   always_ff @(posedge clk)
     if(tst_start_i)
-      success_ff[ii] <= 0;
-    else if(|ctr_ff & ~bist_finish_ff )
-      success_ff[ii] <= (ii == (ctr_ff - 1)) ? (ref_val == state_i ) : success_ff[ii] ;
-end
+      success_ff <= 1;
+    else if( (ctr_ff > 1) & bist_proc_ff  )
+      success_ff <= (success_ff & (ref_val_ff == state_i ));
 
+ 
+
+always_ff @(posedge clk)
+    if (tst_start_i) begin
+      fault_state_ff <= '0;
+      fault_trans_ff <= '0;
+      fault_drive_ff <= '0;
+      fault_ref_ff   <= '0;
+    end else if ( success_ff & (ref_val_ff != state_i)) begin
+      fault_state_ff <= lstate_ff;
+      fault_trans_ff <= state_i;
+      fault_drive_ff <= ldrive_ff;
+      fault_ref_ff   <= ref_val_ff;
+    end
+
+   assign fault_state_o = fault_state_ff;
+   assign fault_trans_o = fault_trans_ff;
+   assign fault_drive_o = fault_drive_ff;
+   assign fault_ref_o   = fault_ref_ff;
+  
 assign success_o  = &success_ff;
-assign drive_o = drive_ff;
+assign drive_o = drive;
 assign duration_o = ctr_ff;
+assign mem_data_o = ram_data;
 endmodule

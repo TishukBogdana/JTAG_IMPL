@@ -25,13 +25,15 @@ module tap_tb();
 localparam INSTR_SEQ      = 32'b011010010001110100100011011111; 
 localparam IDCODE_SEQ     = 64'b0110000000000000000000000000000000010; 
 localparam BYPASS_SEQ     = 32'b0110000111000011;
-localparam INTEST_SEQ_RST = 32'b01100011100000011;
+localparam INTEST_SEQ_RST = 32'b011000000011100000011;
 localparam INTEST_SEQ     = 32'b011000000011100000011;
 localparam SAMPLE_SEQ     = 32'b011000000011100000011;
 localparam PRELOAD_SEQ    = 32'b011011100000011;
 localparam EXTEST_SEQ     = 32'b01100000011;
 localparam BIST_SEQ       = 32'b01100011100000011;
 localparam CAPT_DR_SEQ    = 5'b01101;
+localparam MEM_CFG_SEQ    = 64'b011000000000000000000000000011100000011;
+localparam DUR_CFG_SEQ    = 64'b0110000000000000000011100000011;
 
 logic rst_n;
 logic clk;
@@ -88,13 +90,13 @@ initial begin
 //  $display ("TAP Bypass finished %t", $time);
    
   tms_seq = INTEST_SEQ_RST ;
-  for (int  i = 0; i < 17 ; i ++ ) begin
+  for (int  i = 0; i < 21 ; i ++ ) begin
     tms = tms_seq[i];
     tdi = 0;
     if ( i == 6)  tdi = 1;
    
-    if ( i == 13) tdi = 1 ;
-    if ( i == 14) tdi = 1 ;
+    if ( i == 17) tdi = 1 ;
+    if ( i == 18) tdi = 1 ;
     
     #20 ;
   end
@@ -103,7 +105,7 @@ initial begin
   
   // ----------------------------------
   tms_seq = INTEST_SEQ_RST ;
-  for (int  i = 0; i < 17 ; i ++ ) begin
+  for (int  i = 0; i < 21 ; i ++ ) begin
     tms = tms_seq[i];
     tdi = 0;
     if ( i == 6)  tdi = 1;
@@ -119,6 +121,16 @@ initial begin
     if ( i == 6)  tdi = 1;
    
     if ( i == 16) tdi = 1 ;
+     
+    #20 ;
+  end
+  tms_seq = INTEST_SEQ ;
+  for (int  i = 0; i < 21 ; i ++ ) begin
+    tms = tms_seq[i];
+    tdi = 0;
+    if ( i == 6)  tdi = 1;
+   
+    if ( i == 16) tdi = 1 ;
     if ( i == 17) tdi = 1 ;
     
     #20 ;
@@ -126,10 +138,25 @@ initial begin
   
   // ----------------------------------
   tms_seq = INTEST_SEQ_RST ;
-  for (int  i = 0; i < 17 ; i ++ ) begin
+  for (int  i = 0; i < 21 ; i ++ ) begin
     tms = tms_seq[i];
     tdi = 0;
     if ( i == 6)  tdi = 1;
+    #20 ;
+  end
+  
+    
+  tms_seq = INTEST_SEQ ;
+  for (int  i = 0; i < 21 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+ 
+    if ( i == 6)  tdi = 1;
+  
+    if ( i == 13) tdi = 1 ;
+    if ( i == 16) tdi = 1 ;
+ 
     #20 ;
   end
   
@@ -151,28 +178,12 @@ initial begin
   
     // ----------------------------------
   tms_seq = INTEST_SEQ_RST ;
-  for (int  i = 0; i < 17 ; i ++ ) begin
+  for (int  i = 0; i < 21 ; i ++ ) begin
     tms = tms_seq[i];
     tdi = 0;
     if ( i == 6)  tdi = 1;
     #20 ;
   end
-  
-  
-  tms_seq = INTEST_SEQ ;
-  for (int  i = 0; i < 21 ; i ++ ) begin
-    tms = tms_seq;
-    tdi = 0;
-    tms_seq = tms_seq >> 1;
- 
-    if ( i == 6)  tdi = 1;
-  
-    if ( i == 13) tdi = 1 ;
-    if ( i == 16) tdi = 1 ;
-    if ( i == 17) tdi = 1 ;
-    #20 ;
-  end
-  $display ("TAP Intest finished %t", $time);
   
   ext_din = 4'b1111;
   tms_seq = SAMPLE_SEQ ;
@@ -187,61 +198,41 @@ initial begin
   
     ext_din = 4'b1111;
  
-    tms_seq = PRELOAD_SEQ ;
-  for (int  i = 0; i < 15 ; i ++ ) begin
-    tms = tms_seq;
-    tdi = 0;
-    tms_seq = tms_seq >> 1;
+//    tms_seq = PRELOAD_SEQ ;
+//  for (int  i = 0; i < 15 ; i ++ ) begin
+//    tms = tms_seq;
+//    tdi = 0;
+//    tms_seq = tms_seq >> 1;
     
-    if ( i == 4)  tdi = 1; 
-    if ( i == 5)  tdi = 1; 
-    #20 ;
-  end
-  $display ("TAP Preload finished %t", $time);
+//    if ( i == 4)  tdi = 1; 
+//    if ( i == 5)  tdi = 1; 
+//    #20 ;
+//  end
+//  $display ("TAP Preload finished %t", $time);
   
-  tms_seq = EXTEST_SEQ ;
-  for (int  i = 0; i < 11 ; i ++ ) begin
-    tms = tms_seq;
+//  tms_seq = EXTEST_SEQ ;
+//  for (int  i = 0; i < 11 ; i ++ ) begin
+//    tms = tms_seq;
+//    tdi = 0;
+//    tms_seq = tms_seq >> 1;
+//    if ( i == 4)  tdi = 1;
+//    if ( i == 5)  tdi = 0;
+//    if ( i == 6)  tdi = 1;
+    
+  
+//    #20 ;
+//  end
+   // ----------------------------------
+  tms_seq = INTEST_SEQ_RST ;
+  for (int  i = 0; i < 21 ; i ++ ) begin
+    tms = tms_seq[i];
     tdi = 0;
-    tms_seq = tms_seq >> 1;
-    if ( i == 4)  tdi = 1;
-    if ( i == 5)  tdi = 0;
     if ( i == 6)  tdi = 1;
-    
-  
     #20 ;
   end
+  
   $display ("TAP EXTEST finished %t", $time);
-  
-  
-  tms_seq = BIST_SEQ ;
-  for (int  i = 0; i < 17 ; i ++ ) begin
-    tms = tms_seq;
-    tdi = 0;
-    tms_seq = tms_seq >> 1;
-    if ( i == 4)  tdi = 1;
-    if ( i == 5)  tdi = 1;
-    if ( i == 6)  tdi = 1;
-    
-    
-    if ( i == 13) tdi = 0 ;
-    if ( i == 14) tdi = 1 ;
-    #20 ;
-  end
-  $display ("TAP BIST finished %t", $time);
-  
-  
-  #700 ;        
-  
-  tms_seq = CAPT_DR_SEQ ;
-  for (int  i = 0; i < 6 ; i ++ ) begin
-    tms = tms_seq;
-    tdi = 0;
-    tms_seq = tms_seq >> 1;
-    #20 ;
-  end
-  $display ("TAP BIST finished %t", $time);
-      
+       
   tms_seq = BIST_SEQ ;
   for (int  i = 0; i < 17 ; i ++ ) begin
     tms = tms_seq;
@@ -259,7 +250,7 @@ initial begin
   $display ("TAP BIST finished %t", $time);
   
   
-  #700 ;        
+  #7000 ;        
   
   tms_seq = CAPT_DR_SEQ ;
   for (int  i = 0; i < 6 ; i ++ ) begin
@@ -270,6 +261,199 @@ initial begin
   end
   $display ("TAP BIST finished %t", $time);
   
+  // Inject fault
+  tms_seq = MEM_CFG_SEQ ;
+  for (int  i = 0; i < 45 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    
+    if ( i == 7)  tdi = 1;
+
+    #20 ;
+  end
+  $display ("TAP MEM_CFG finished %t", $time);
+  
+  tms_seq = MEM_CFG_SEQ ;
+  for (int  i = 0; i < 45 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    
+    if ( i == 7)  tdi = 1;
+    if ( i == 21) tdi = 1 ;
+    if ( i == 23) tdi = 1 ; 
+    if ( i == 25) tdi = 1 ;
+    if ( i == 27) tdi = 1 ;
+    if ( i == 29) tdi = 1 ;
+    if ( i == 31) tdi = 1 ;
+    if ( i == 36) tdi = 1 ;
+    #20 ;
+  end
+  $display ("TAP MEM_CFG finished %t", $time);
+  
+  tms_seq = MEM_CFG_SEQ ;
+  for (int  i = 0; i < 45 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 7)  tdi = 1;
+    #20 ;
+  end
+  
+  $display ("TAP MEM_CFG finished %t", $time);
+  
+    tms_seq = BIST_SEQ ;
+  for (int  i = 0; i < 17 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 1;
+    if ( i == 5)  tdi = 1;
+    if ( i == 6)  tdi = 1;
+    
+    
+    if ( i == 13) tdi = 1 ;
+    if ( i == 14) tdi = 1 ;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+  
+  #7000 ;        
+  
+  tms_seq = CAPT_DR_SEQ ;
+  for (int  i = 0; i < 6 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+  // DURATION change
+      tms_seq = DUR_CFG_SEQ ;
+  for (int  i = 0; i < 31 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 1;
+    if ( i == 7)  tdi = 1;
+    
+    if ( i == 22) tdi = 1 ;
+    if ( i == 28) tdi = 1 ;     
+    #20 ;
+  end
+  $display ("TAP DUR_CFG finished %t", $time);
+  
+      tms_seq = BIST_SEQ ;
+  for (int  i = 0; i < 17 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 1;
+    if ( i == 5)  tdi = 1;
+    if ( i == 6)  tdi = 1;
+    
+    
+    if ( i == 13) tdi = 1 ;
+    if ( i == 14) tdi = 1 ;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+  
+  #7000 ;        
+   tms_seq = CAPT_DR_SEQ ;
+  for (int  i = 0; i < 6 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+  // Restore duration
+      tms_seq = DUR_CFG_SEQ ;
+  for (int  i = 0; i < 31 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 1;
+    if ( i == 7)  tdi = 1;
+    
+    if ( i == 21) tdi = 1 ;
+    if ( i == 23) tdi = 1 ;
+    if ( i == 24) tdi = 1 ;
+    if ( i == 25) tdi = 1 ;
+    if ( i == 27) tdi = 1 ;
+    if ( i == 28) tdi = 1 ;     
+    #20 ;
+  end
+  $display ("TAP DUR_CFG finished %t", $time);
+  
+  // Restore fault
+   tms_seq = MEM_CFG_SEQ ;
+  for (int  i = 0; i < 45 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    
+    if ( i == 7)  tdi = 1;
+    if ( i == 21) tdi = 1 ;
+    if ( i == 22) tdi = 1 ; 
+    if ( i == 25) tdi = 1 ;
+    if ( i == 26) tdi = 1 ;
+    if ( i == 28) tdi = 1 ;
+    if ( i == 29) tdi = 1 ;
+    if ( i == 31) tdi = 1 ;
+    if ( i == 36) tdi = 1 ;
+    #20 ;
+  end
+  $display ("TAP MEM_CFG finished %t", $time);
+  
+     tms_seq = MEM_CFG_SEQ ;
+  for (int  i = 0; i < 45 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    
+    if ( i == 7)  tdi = 1;
+    #20 ;
+  end
+  $display ("TAP MEM_CFG finished %t", $time);
+  
+
+  
+    tms_seq = BIST_SEQ ;
+  for (int  i = 0; i < 17 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    if ( i == 4)  tdi = 1;
+    if ( i == 5)  tdi = 1;
+    if ( i == 6)  tdi = 1;
+    
+    
+    if ( i == 13) tdi = 1 ;
+    if ( i == 14) tdi = 1 ;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+  
+  #7000 ;        
+  
+  tms_seq = CAPT_DR_SEQ ;
+  for (int  i = 0; i < 6 ; i ++ ) begin
+    tms = tms_seq;
+    tdi = 0;
+    tms_seq = tms_seq >> 1;
+    #20 ;
+  end
+  $display ("TAP BIST finished %t", $time);
+  
+
                
   $finish();
 end     
@@ -279,9 +463,6 @@ always
 
 always 
     #5 clk = ~clk;
-
-//always 
-   // #20 ext_wr = ~ext_wr;
             
  tap i_tap(
     .rst_n (rst_n), // Async reset
@@ -293,15 +474,4 @@ always
     .ext_din (ext_din),
     .ext_state ());
  
-//  fsm_mur tmur(
-//    .clk (clk),
-//    .rst_n (rst_n),
-//    .sig_in (drive_ff),
-//    .state_o () ,
-//    .tmode_i ('0),
-//    .tmode_clk_en ('0),
-//    .start_bist ('0),
-//    .rst_state ('0)
-//    );
-       
 endmodule
