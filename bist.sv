@@ -103,7 +103,7 @@ always_ff @(posedge clk or negedge rst_n)
         start_addr_ff <= start_addr_cfg_i ? start_addr_i : start_addr_ff;
         duration_ff   <= dur_cfg_i ? duration_i : duration_ff;
         bist_proc_ff  <= tst_start_i ? '1 : ( (ctr_ff < duration_ff ) & success_ff);
-        ctr_ff  <= tst_start_i ? '0 : ((ctr_ff >= duration_ff )? ctr_ff : ctr_ff + 1);
+        ctr_ff  <= tst_start_i ? '0 : ((ctr_ff >= duration_ff | ~success_ff)? ctr_ff : ctr_ff + 1);
     end
 
 
